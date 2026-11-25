@@ -493,21 +493,32 @@ function flatSteps(ins) {
   return [];
 }
 
+// yield can be "4", "Serves 4", or "Makes 500ml". only trust plain counts
+function yieldServ(y) {
+  for (const t of [].concat(y || []).map(String)) {
+    if (/\d\s*(ml|l|litres?|liters?|g|kg|cups?|oz|pints?)\b/i.test(t)) continue;
+    const m = t.match(/(\d+)/);
+    if (m && +m[1] > 0 && +m[1] <= 24) return +m[1];
+  }
+  return null;
+}
+
 function fromLd(o, url) {
   const img = o.image ? (typeof o.image === 'string' ? o.image : Array.isArray(o.image) ? (typeof o.image[0] === 'string' ? o.image[0] : o.image[0].url) : o.image.url) : '';
   const n = o.nutrition || {};
-  const y = Array.isArray(o.recipeYield) ? o.recipeYield[0] : o.recipeYield;
+  const serv = yieldServ(o.recipeYield);
+  const ytxt = [].concat(o.recipeYield || []).map(String).find(t => /\d/.test(t)) || '';
   const kw = typeof o.keywords === 'string' ? o.keywords.split(',') : (o.keywords || []);
   const tags = [...[].concat(o.recipeCategory || []), ...[].concat(o.recipeCuisine || [])].map(s => decode(s).toLowerCase()).filter(Boolean).slice(0, 4);
   return {
     title: decode(o.name) || 'Untitled',
-    servings: numIn(y) || S.settings.servings,
+    servings: serv || S.settings.servings,
     prep: isoMins(o.prepTime), cook: isoMins(o.cookTime) || (!o.prepTime && isoMins(o.totalTime)) || '',
     tags: [...new Set(tags.length ? tags : kw.slice(0, 3).map(s => decode(s).toLowerCase()).filter(Boolean))],
     raw: [].concat(o.recipeIngredient || o.ingredients || []).map(decode).filter(Boolean),
     steps: flatSteps(o.recipeInstructions),
     macros: { k: numIn(n.calories), p: numIn(n.proteinContent), c: numIn(n.carbohydrateContent), f: numIn(n.fatContent) },
-    image: img || '', source: url, notes: ''
+    image: img || '', source: url, notes: !serv && ytxt ? `Makes ${decode(ytxt).replace(/^makes\s*/i, '')}. Set the servings to however many portions you split it into.` : ''
   };
 }
 
