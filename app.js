@@ -10,7 +10,8 @@ const DEFAULTS = {
     + 'kidney beans, soy sauce, soya sauce, tamari',
   staples: 'salt, black pepper, pepper, water, salt and pepper',
   servings: 2,
-  scriptUrl: '', scriptToken: ''
+  scriptUrl: '', scriptToken: '',
+  forgeMode: 'app'
 };
 
 const S = { settings: { ...DEFAULTS }, recipes: [], plan: {}, shop: [] };
@@ -235,20 +236,27 @@ function addToShop(list) {
 }
 
 // ---------- forge ----------
-function forgeHere() { try { return !!localStorage.getItem(FORGE_KEY); } catch (e) { return false; } }
+// apk version: hand it over with a forge:// intent. web version: write straight into its storage
+const forgeWeb = () => S.settings.forgeMode === 'web';
+function forgeHere() { return true; }
 function logToForge(r, serv, meal) {
+  const m = r.macros || {};
+  const e = { id: uid(), date: today(), meal, name: r.title + (serv !== 1 ? ` ×${fmtQty(serv)}` : ''),
+    k: r1((+m.k || 0) * serv), p: r1((+m.p || 0) * serv), c: r1((+m.c || 0) * serv), f: r1((+m.f || 0) * serv), fib: 0 };
+  if (!forgeWeb()) {
+    const b = btoa(unescape(encodeURIComponent(JSON.stringify(e)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    location.href = `intent://log?d=${b}#Intent;scheme=forge;package=com.ritualsyntax.forge;end`;
+    return true;
+  }
   try {
     const raw = localStorage.getItem(FORGE_KEY);
     if (!raw) return false;
-    const s = JSON.parse(raw), k = today(), m = r.macros || {};
+    const s = JSON.parse(raw);
     s.diary = s.diary || {};
-    (s.diary[k] = s.diary[k] || []).push({
-      id: uid(), fid: null, name: r.title + (serv !== 1 ? ` ×${fmtQty(serv)}` : ''), g: 0, meal,
-      k: r1((+m.k || 0) * serv), p: r1((+m.p || 0) * serv), c: r1((+m.c || 0) * serv), f: r1((+m.f || 0) * serv), fib: 0
-    });
+    (s.diary[e.date] = s.diary[e.date] || []).push({ id: e.id, fid: null, name: e.name, g: 0, meal, k: e.k, p: e.p, c: e.c, f: e.f, fib: 0 });
     localStorage.setItem(FORGE_KEY, JSON.stringify(s));
     return true;
-  } catch (e) { return false; }
+  } catch (err) { return false; }
 }
 const guessMeal = () => { const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 21 ? 'Dinner' : 'Snacks'; };
 
@@ -716,7 +724,7 @@ function entrySheet(date, id) {
     </div>
   `);
   ACTS.entryOpen = () => recipeSheet(r.id);
-  ACTS.entryLog = () => { if (logToForge(r, e.serv, e.meal)) { closeSheet(true); toast('Logged in Forge'); } else toast('Forge not found on this phone'); };
+  ACTS.entryLog = () => { if (logToForge(r, e.serv, e.meal)) { closeSheet(true); toast(forgeWeb() ? 'Logged in Forge' : 'Opening Forge…'); } else toast('Couldn\'t find Forge\'s data in this browser'); };
   ACTS.entryDel = () => { S.plan[date] = S.plan[date].filter(x => x.id !== id); if (!S.plan[date].length) delete S.plan[date]; save('plan'); closeSheet(true); render(); };
 }
 
@@ -746,8 +754,8 @@ function logSheet(fromCook) {
       if (!(v > 0)) { toast('How much did you have?'); return; }
       if (logToForge(r, v, $('#lMeal').value)) {
         if (!fromCook) { r.made = (r.made || 0) + 1; r.lastMade = Date.now(); save('recipes'); }
-        closeSheet(true); render(); toast('Logged in Forge');
-      } else toast('Couldn\'t write to Forge');
+        closeSheet(true); render(); toast(forgeWeb() ? 'Logged in Forge' : 'Opening Forge…');
+      } else toast('Couldn\'t find Forge\'s data in this browser');
     };
   }, { back: fromCook ? null : () => recipeSheet(r.id, crServ) });
 }
@@ -768,11 +776,16 @@ function settingsSheet() {
     <p class="hint">Your Google helper script, the same one Tithe uses. Leave blank to borrow Tithe's.</p>
     <label>Script URL<input id="sUrl" type="url" value="${esc(st.scriptUrl)}"></label>
     <label>Script token<input id="sTok" value="${esc(st.scriptToken)}"></label>
+    <div class="sec">Forge</div>
+    <label>Which Forge do you use?<select id="sForge">
+      <option value="app" ${st.forgeMode !== 'web' ? 'selected' : ''}>The Android app (APK)</option>
+      <option value="web" ${st.forgeMode === 'web' ? 'selected' : ''}>The website, installed from Chrome</option></select></label>
+    <p class="hint">The app version opens Forge and drops the meal in. Needs the Forge APK from 25 Nov 2026 or newer.</p>
     <div class="actions"><button class="btn solid" data-act="saveSettings">Save settings</button></div>
     <div class="sec">Backup</div>
     <p class="hint">Recipes live on this phone only. Export a backup now and then.</p>
     <div class="actions"><button class="btn ghost" data-act="exportBackup">Export backup</button><button class="btn ghost" data-act="importBackup">Restore backup</button></div>
-    <p class="hint" style="margin-top:14px">${forgeHere() ? 'Forge found on this phone. "Log to Forge" adds meals to today\'s diary.' : 'Forge isn\'t on this phone\'s browser, so "Log to Forge" won\'t work yet.'}</p>
+
   `);
 }
 
@@ -948,7 +961,7 @@ const ACTS = {
   saveSettings: () => {
     const url = $('#sUrl').value.trim();
     if (url && !/^https:\/\/script\.google\.com\//.test(url)) { toast('Script URL should start https://script.google.com/'); return; }
-    Object.assign(S.settings, { avoid: $('#sAvoid').value.trim(), staples: $('#sStaples').value.trim(), servings: +$('#sServ').value || 2, scriptUrl: url, scriptToken: $('#sTok').value.trim() });
+    Object.assign(S.settings, { avoid: $('#sAvoid').value.trim(), staples: $('#sStaples').value.trim(), servings: +$('#sServ').value || 2, scriptUrl: url, scriptToken: $('#sTok').value.trim(), forgeMode: $('#sForge').value });
     save('settings'); closeSheet(true); render(); toast('Saved');
   },
   exportBackup: async () => {
