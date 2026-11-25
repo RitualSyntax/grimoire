@@ -405,7 +405,8 @@ function recipeSheet(id, serv, same) {
     ${bad.length ? `<div class="card warn" style="margin:6px 0"><p class="small">Contains <b class="red">${esc(bad.join(', '))}</b>. The lines are marked below so you can swap them.</p></div>` : ''}
     ${m.k || m.p ? `<div class="mono muted" style="margin-top:8px">Per serving</div><div class="macros">
       <div><b>${Math.round(+m.k || 0)}</b><span>kcal</span></div><div><b>${r1(m.p)}</b><span>Protein</span></div>
-      <div><b>${r1(m.c)}</b><span>Carbs</span></div><div><b>${r1(m.f)}</b><span>Fat</span></div></div>` : ''}
+      <div><b>${r1(m.c)}</b><span>Carbs</span></div><div><b>${r1(m.f)}</b><span>Fat</span></div></div>
+      <p class="small muted">Whole lot (${fmtQty(crServ)} servings): <b>${Math.round((+m.k || 0) * crServ)} kcal</b> · ${Math.round((+m.p || 0) * crServ)}g protein · ${Math.round((+m.c || 0) * crServ)}g carbs · ${Math.round((+m.f || 0) * crServ)}g fat</p>` : ''}
     <div class="row" style="margin:12px 0 4px">
       <button class="btn solid" data-act="cook" style="flex:1">Cook</button>
       <button class="btn ghost" data-act="toPlan" style="flex:1">Plan</button>
@@ -719,6 +720,38 @@ function entrySheet(date, id) {
   ACTS.entryDel = () => { S.plan[date] = S.plan[date].filter(x => x.id !== id); if (!S.plan[date].length) delete S.plan[date]; save('plan'); closeSheet(true); render(); };
 }
 
+// ---------- log to forge ----------
+function logSheet(fromCook) {
+  const r = cr, m = r.macros || {};
+  openSheet(`
+    ${head('Log to Forge')}
+    <p><b>${esc(r.title)}</b></p>
+    <div class="grid2">
+      <label>How much you ate (servings)<input id="lServ" type="number" inputmode="decimal" step="0.25" min="0.25" value="1"></label>
+      <label>Meal<select id="lMeal">${MEALS.map(x => `<option ${x === guessMeal() ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+    </div>
+    <div class="chips" style="margin-top:8px">${[0.5, 1, 1.5, 2].map(v => `<button class="chip" data-v="${v}">${fmtQty(v)}</button>`).join('')}</div>
+    <div class="macros" id="lMac"></div>
+    <div class="actions"><button class="btn solid" data-act="logGo">Log it</button></div>
+  `, () => {
+    const upd = () => {
+      const v = +$('#lServ').value || 0;
+      $('#lMac').innerHTML = `<div><b>${Math.round((+m.k || 0) * v)}</b><span>kcal</span></div><div><b>${r1((+m.p || 0) * v)}</b><span>Protein</span></div>
+        <div><b>${r1((+m.c || 0) * v)}</b><span>Carbs</span></div><div><b>${r1((+m.f || 0) * v)}</b><span>Fat</span></div>`;
+    };
+    $('#lServ').oninput = upd; upd();
+    document.querySelectorAll('#sheet .chip[data-v]').forEach(c => c.onclick = () => { $('#lServ').value = c.dataset.v; upd(); });
+    ACTS.logGo = () => {
+      const v = +$('#lServ').value;
+      if (!(v > 0)) { toast('How much did you have?'); return; }
+      if (logToForge(r, v, $('#lMeal').value)) {
+        if (!fromCook) { r.made = (r.made || 0) + 1; r.lastMade = Date.now(); save('recipes'); }
+        closeSheet(true); render(); toast('Logged in Forge');
+      } else toast('Couldn\'t write to Forge');
+    };
+  }, { back: fromCook ? null : () => recipeSheet(r.id, crServ) });
+}
+
 // ---------- settings ----------
 function settingsSheet() {
   const st = S.settings;
@@ -815,14 +848,11 @@ const ACTS = {
     toast(`Added to shopping list (${fmtQty(crServ)} servings)`);
   },
   toPlan: () => planPick(today(), guessMeal(), cr.id),
-  logForge: async () => {
+  logForge: () => {
     if (!forgeHere()) { toast('Forge not found on this phone\'s browser'); return; }
     const m = cr.macros || {};
     if (!+m.k && !+m.p) { toast('Add per-serving macros first (Edit)'); return; }
-    const meal = guessMeal();
-    if (!await ask(`Log 1 serving of ${cr.title} to Forge as ${meal}?\n${Math.round(+m.k || 0)} kcal · ${r1(m.p)}g protein`, 'Log it')) return;
-    if (logToForge(cr, 1, meal)) { cr.made = (cr.made || 0) + 1; cr.lastMade = Date.now(); save('recipes'); toast('Logged in Forge'); }
-    else toast('Couldn\'t write to Forge');
+    logSheet();
   },
 
   saveRecipe: async () => {
@@ -866,9 +896,8 @@ const ACTS = {
     cr.made = (cr.made || 0) + 1; cr.lastMade = Date.now(); save('recipes');
     const m = cr.macros || {};
     closeSheet(true); render();
-    if (forgeHere() && (+m.k || +m.p) && await ask(`Nice. Log a serving to Forge as ${guessMeal()}?`, 'Log it')) {
-      logToForge(cr, 1, guessMeal()) ? toast('Logged in Forge') : toast('Couldn\'t write to Forge');
-    } else toast('Done. Enjoy.');
+    if (forgeHere() && (+m.k || +m.p) && await ask('Nice. Log what you ate to Forge?', 'Log it')) logSheet(true);
+    else toast('Done. Enjoy.');
   },
   timer: d => startTimer(+d.s, d.l),
   timerTap: async d => {
