@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Grimoire</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <svg class="sigil" viewBox="0 0 32 32" aria-hidden="true">
+    <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <path d="M16 5 L26 23 L6 23 Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <line x1="9" y1="17" x2="23" y2="17" stroke="currentColor" stroke-width="1.5"/>
+    <circle cx="16" cy="19.5" r="1.6" fill="currentColor"/>
+  </svg>
+  <div class="brand">
+    <h1>Grimoire</h1>
+    <div class="mono muted">Recipes · Plan · Shop</div>
+  </div>
+  <button class="icon-btn" data-act="settings" aria-label="Settings" id="gearBtn"></button>
+</header>
+
+<main id="app"></main>
+
+<div id="timers"></div>
+<nav class="tabs" id="tabs"></nav>
+
+<div id="sheet" hidden></div>
+<div id="dialog" hidden></div>
+<div id="toast"></div>
+<input type="file" id="photoPick" accept="image/*" hidden>
+<input type="file" id="backupPick" accept="application/json,.json" hidden>
+
+<script src="app.js"></script>
+</body>
+</html>
